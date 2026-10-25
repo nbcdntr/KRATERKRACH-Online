@@ -151,10 +151,12 @@
     ${!active?`<label class="hq-overline" for="lanCode">Raumcode zum Beitreten</label><input id="lanCode" maxlength="6" autocapitalize="characters" value="${escapeHTML(net.room)}" style="width:100%;padding:13px;background:#15263b;color:#fff;border:1px solid #526377;border-radius:8px;margin:9px 0" placeholder="ABC123"/>`:''}
     ${isHost&&!net.started?`<div class="modal-actions"><button id="lanStart" class="primary-button" ${players.length<2?'disabled':''}>MATCH STARTEN (${net.rounds} RUNDEN)</button></div>`:''}
     ${active?'<div class="modal-actions"><button id="lanResume" class="secondary-button">ZURÜCK ZUM SPIEL</button><button id="lanExit" class="secondary-button">RAUM VERLASSEN</button></div>':''}
+    ${!active?'<div class="modal-actions"><button id="lanBack" class="secondary-button">ZURÜCK ZUM HANGAR</button></div>':''}
     <p class="modal-copy" style="font-size:12px">Beta: Die Raumverbindung ist verschlüsselt (WSS). Der Gastgeber simuliert die Physik. Matchbelohnungen werden aktuell nur auf dem Gastgebergerät gespeichert.</p>
     </div></div>`);
     if($('allyTarget'))$('allyTarget').onchange=e=>netSend({type:'ally_request',target:Number(e.target.value)});
     if($('lanCreate'))$('lanCreate').onclick=()=>lanConnect('host');
+    if($('lanBack'))$('lanBack').onclick=()=>showMenu();
     if($('lanJoin'))$('lanJoin').onclick=()=>lanConnect('guest');
     if($('lanResume'))$('lanResume').onclick=()=>{if(screen.mode==='playing')$('modal').classList.add('hidden');else lanLobby();};
     if($('lanExit'))$('lanExit').onclick=()=>{netClose();showMenu();};
@@ -519,7 +521,7 @@
     screen.mode='menu';screen.hqTab=tab;
     updateMeta();
     const active=tankById(profile.equipped), chosen=paints.find(c=>c.id===profile.paint)||paints[0];
-    const header=`<div class="hq-head"><div><span class="hq-overline">KOMMANDOZENTRALE // OFFLINE-SAISON 01</span><h1 class="hq-title">KRATER<span>KRACH</span><small> TANK ARENA</small></h1></div><div class="hq-identity"><span>${escapeHTML(profile.name)}</span><strong>${money(profile.credits)}</strong><small>${leagues[leagueIndex()].name} · ${profile.trophies} RP</small></div></div>`;
+    const header=`<div class="hq-head"><div><span class="hq-overline">KOMMANDOZENTRALE // HANGAR & ONLINE ARENA</span><h1 class="hq-title">KRATER<span>KRACH</span><small> TANK ARENA</small></h1></div><div class="hq-identity"><span>${escapeHTML(profile.name)}</span><strong>${money(profile.credits)}</strong><small>${leagues[leagueIndex()].name} · ${profile.trophies} RP</small></div></div>`;
     const tabs=[['hangar','HANGAR'],['shop','MARKT'],['upgrades','UPGRADES'],['league','LIGA'],['profile','PROFIL'],['battle','GEFECHT']];
     const nav=`<nav class="hq-nav" aria-label="Hauptnavigation">${tabs.map(([id,name])=>`<button data-hq="${id}" class="${id===tab?'active':''}">${name}</button>`).join('')}</nav>`;
     let body='';
@@ -569,7 +571,12 @@
         <div class="battle-roster"><span>AKTIVER PANZER</span>${tankSVG(active.id,chosen.color)}<strong>${active.name}</strong><small>${active.special}</small></div>
         <button id="start" class="primary-button battle-launch">GEFECHT STARTEN →</button></div>`;
     }
-    showModal(`<div class="hq-root">${header}${nav}<div class="hq-body">${body}</div></div>`);
+    const onlineCta=`<div style="padding:12px 18px;background:#162e29;border-bottom:1px solid #446a5d">
+      <button id="openOnlineLobby" class="primary-button" style="width:100%;display:block;min-height:48px;border:1px solid #b9e2c9;background:linear-gradient(110deg,#bce9c9,#71c6b0);color:#10372d">
+      🌐 ONLINE SPIEL · RAUM ERSTELLEN ODER BEITRETEN →</button>
+      <div style="font-size:11px;color:#c5dbc9;margin-top:7px;text-align:center">2 bis 6 Panzer insgesamt · 2 bis 10 Runden · private Räume · weltweit</div></div>`;
+    showModal(`<div class="hq-root">${header}${onlineCta}${nav}<div class="hq-body">${body}</div></div>`);
+    $('openOnlineLobby').onclick=()=>lanLobby();
     $('modalContent').querySelectorAll('[data-hq]').forEach(b=>b.onclick=()=>showHQ(b.dataset.hq));
     $('modalContent').querySelectorAll('[data-equip]').forEach(b=>b.onclick=()=>{
       const id=b.dataset.equip;if(!profile.owned.includes(id))return;profile.equipped=id;saveProfile();showHQ(tab);sound(630,.1);
