@@ -117,27 +117,74 @@
       <path d="M102 56h41M101 62h48" stroke="#111e1d" stroke-width="3" opacity=".35"/>
     </svg>`;
   }
-  const screen = { mode:'menu', humans:1, bots:2, maxRounds:5, previewPct:50, upgradeMode:'equal', weaponsRule:'standard', windMode:'normal', fallDamage:true, seatClasses:['titan','artillery','guardian','scout','titan'], round:0, players:[], terrain:[], wind:0, turn:0, current:null, shots:[], particles:[], rings:[], busy:false, settleTimer:-1, flash:0, toastTimer:0, fallPopups:[], shopIndex:0, sound:true, audio:null, audioBus:null, lastFx:0, lastFragmentFx:0, last:0, starfield:[], phase:0, aiTimer:0, aiDifficulty:'easy', hqTab:'hangar', matchReward:null };
+  const screen = { mode:'menu', humans:1, bots:2, maxRounds:5, previewPct:30, upgradeMode:'equal', weaponsRule:'standard', windMode:'normal', fallDamage:true, seatClasses:['titan','artillery','guardian','scout','titan'], round:0, players:[], terrain:[], wind:0, turn:0, current:null, shots:[], particles:[], rings:[], busy:false, settleTimer:-1, flash:0, toastTimer:0, fallPopups:[], shopIndex:0, sound:true, audio:null, audioBus:null, lastFx:0, lastFragmentFx:0, last:0, starfield:[], phase:0, aiTimer:0, aiDifficulty:'easy', hqTab:'hangar', matchReward:null };
   for(let i=0;i<85;i++) screen.starfield.push({x:(i*487.3+81)%W,y:(i*137.71+39)%280,z:0.4+(i%4)*0.18});
 
   // KRATERKRACH 0.9: Hosted internet rooms, 2-7 phones, >=2 rounds.
-  const net={ws:null,role:null,room:'',server:'',seat:0,players:[],connected:false,remoteCommand:false,localSeat:0,lastBroadcast:0,lastStatus:'',limit:6,bots:0,rounds:3,started:false};
+  const net={ws:null,role:null,room:'',server:'',seat:0,players:[],connected:false,remoteCommand:false,localSeat:0,lastBroadcast:0,lastStatus:'',limit:6,bots:0,rounds:3,started:false,
+    retryTimer:null,retryCount:0,restoring:false,turnTime:0};
   const DEVICE_KEY='kk_global_device_token';
+  const SESSION_KEY='kk_active_room_v12';
   function getDeviceId(){let id=localStorage.getItem(DEVICE_KEY);if(!/^[0-9a-f]{32}$/.test(id||'')){const b=new Uint8Array(16);crypto.getRandomValues(b);id=Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');localStorage.setItem(DEVICE_KEY,id);}return id;}
   const rosterHumans=()=>net.players.filter(p=>!p.bot);
   const onlineAlliances=()=>net.players.some(p=>p.ally>=0);
   const activeTeams=()=>new Set(alive().map(p=>p.team||('S'+p.id)));
   const winningPlayers=()=>{const a=alive();return activeTeams().size===1?a:[];};
   const netActive=()=>net.role==='host'||net.role==='guest';
-  const localTurn=()=>!netActive()||screen.turn===net.seat;
+  const localTurn=()=>!netActive()||(net.connected&&screen.turn===net.seat);
   function netSend(data){if(net.ws?.readyState===1)net.ws.send(JSON.stringify(data));}
-  function netClose(){net.role=null;net.connected=false;net.room='';net.players=[];net.started=false;if(net.ws){const ws=net.ws;net.ws=null;try{ws.close();}catch(_){}}$('networkLabel').textContent='LOKALES SPIEL';}
+  function saveOnlineSession(){
+    if(!net.room||!net.role)return;
+    try{localStorage.setItem(SESSION_KEY,JSON.stringify({server:net.server,code:net.room,role:net.role,limit:net.limit,bots:net.bots,rounds:net.rounds}));}catch(_){}
+  }
+  function netClose(){
+    clearTimeout(net.retryTimer);net.retryTimer=null;
+    if(net.ws?.readyState===1)try{net.ws.send(JSON.stringify({type:'leave'}));}catch(_){}
+    net.role=null;net.connected=false;net.room='';net.players=[];net.started=false;net.restoring=false;
+    try{localStorage.removeItem(SESSION_KEY);}catch(_){}
+    if(net.ws){const ws=net.ws;net.ws=null;try{ws.close();}catch(_){}}
+    $('networkLabel').textContent='LOKALES SPIEL';
+  }
+  function websocketURL(mode){
+    const u=new URL(net.server);
+    const prefix=(u.protocol==='https:'?'wss://':'ws://')+u.host+'/ws?mode='+mode;
+    const info=mode==='host'?'&maxPlayers='+net.limit+'&maxRounds='+net.rounds+'&bots='+net.bots:'&code='+encodeURIComponent(net.room);
+    return prefix+info+'&id='+getDeviceId();
+  }
+  function scheduleReconnect(){
+    if(!netActive()||!net.room||net.retryTimer)return;
+    const delay=Math.min(30000,1200*Math.pow(1.65,Math.min(8,net.retryCount++)));
+    $('networkLabel').textContent='VERBINDUNG WIRD WIEDERHERGESTELLT · '+net.room;
+    net.retryTimer=setTimeout(()=>{net.retryTimer=null;resumeOnline();},delay);
+  }
+  function resumeOnline(){
+    if(!netActive()||!net.room||!net.server)return;
+    if(net.ws?.readyState===0||net.ws?.readyState===1)return;
+    net.restoring=true;
+    try{installWebsocket(new WebSocket(websocketURL('resume')));}
+    catch(_){scheduleReconnect();}
+  }
+  function installWebsocket(ws){
+    net.ws=ws;
+    ws.onopen=()=>{net.retryCount=0;netSend({type:'profile',tank:profile.equipped});};
+    ws.onmessage=e=>{try{lanMessage(JSON.parse(e.data));}catch(err){console.error('ONLINE receive',err);}};
+    ws.onerror=()=>{};
+    ws.onclose=()=>{
+      if(net.ws!==ws||!netActive())return;
+      net.connected=false;
+      net.ws=null;
+      if(!net.room){netClose();lanLobby('Server nicht erreichbar. Adresse prüfen und erneut versuchen.');return;}
+      toast('VERBINDUNG UNTERBROCHEN · VERBINDE NEU',3);
+      scheduleReconnect();
+    };
+  }
+
   function lanLobby(message=''){
     const server=net.server||localStorage.getItem('kk_online_server')||((location.host&&location.protocol.startsWith('http'))?location.origin:'https://YOUR-SERVER.onrender.com');
     const isHost=net.role==='host',active=netActive(),players=net.players;
     const status=active?(net.started?'MATCH LÄUFT':`${players.length} / ${net.limit} PANZER IM RAUM (${rosterHumans().length} MENSCHEN + ${net.bots} CPU)`):'Noch nicht verbunden';
     showModal(`<div class="hq-root"><div class="hq-head"><div><span class="hq-overline">PRIVATES INTERNET-SPIEL</span><h1 class="hq-title">KRATER<span>KRACH</span> <small>ONLINE</small></h1></div></div><div class="hq-body" style="max-width:650px;margin:auto">
-    <p class="modal-copy">Mit 2 bis 6 Panzern insgesamt spielen, einschließlich CPUs. Kein Heimserver nötig, sobald ein Internet-Server eingerichtet ist. Jeder spielt nur seinen eigenen Panzer.</p>
+    <p class="modal-copy">2 bis 6 Panzer einschließlich CPUs · mindestens 2 Runden · Vorschau: 30 % + Windkorridor. Bei Verbindungsabbruch bleibt dein Platz fünf Minuten reserviert.</p>
     <label class="hq-overline" for="lanHost">Adresse des Internet-Servers (HTTPS)</label>
     <input id="lanHost" value="${escapeHTML(server)}" placeholder="https://kraterkrach-online.onrender.com" style="width:100%;padding:12px;background:#15263b;color:#eaf4ff;border:1px solid #526377;border-radius:8px;margin:8px 0 12px" ${active?'disabled':''}/>
     <p class="modal-copy"><b>RAUMCODE: ${net.room?escapeHTML(net.room):'—'}</b> &nbsp; · &nbsp; ${escapeHTML(status)}</p>
@@ -151,6 +198,7 @@
     ${!active?`<label class="hq-overline" for="lanCode">Raumcode zum Beitreten</label><input id="lanCode" maxlength="6" autocapitalize="characters" value="${escapeHTML(net.room)}" style="width:100%;padding:13px;background:#15263b;color:#fff;border:1px solid #526377;border-radius:8px;margin:9px 0" placeholder="ABC123"/>`:''}
     ${isHost&&!net.started?`<div class="modal-actions"><button id="lanStart" class="primary-button" ${players.length<2?'disabled':''}>MATCH STARTEN (${net.rounds} RUNDEN)</button></div>`:''}
     ${active?'<div class="modal-actions"><button id="lanResume" class="secondary-button">ZURÜCK ZUM SPIEL</button><button id="lanExit" class="secondary-button">RAUM VERLASSEN</button></div>':''}
+    ${active&&!net.connected?'<p class="modal-copy">Verbindung unterbrochen. Dein Platz wird automatisch wieder verbunden.</p><div class="modal-actions"><button id="lanRetry" class="primary-button">JETZT ERNEUT VERBINDEN</button></div>':''}
     ${!active?'<div class="modal-actions"><button id="lanBack" class="secondary-button">ZURÜCK ZUM HANGAR</button></div>':''}
     <p class="modal-copy" style="font-size:12px">Beta: Die Raumverbindung ist verschlüsselt (WSS). Der Gastgeber simuliert die Physik. Matchbelohnungen werden aktuell nur auf dem Gastgebergerät gespeichert.</p>
     </div></div>`);
@@ -159,7 +207,8 @@
     if($('lanBack'))$('lanBack').onclick=()=>showMenu();
     if($('lanJoin'))$('lanJoin').onclick=()=>lanConnect('guest');
     if($('lanResume'))$('lanResume').onclick=()=>{if(screen.mode==='playing')$('modal').classList.add('hidden');else lanLobby();};
-    if($('lanExit'))$('lanExit').onclick=()=>{netClose();showMenu();};
+    if($('lanExit'))$('lanExit').onclick=()=>{if(confirm('Möchtest du den Online-Raum wirklich verlassen?')){netClose();showMenu();}};
+    if($('lanRetry'))$('lanRetry').onclick=()=>{clearTimeout(net.retryTimer);net.retryTimer=null;resumeOnline();};
     if($('lanStart'))$('lanStart').onclick=lanStart;
   }
   function lanConnect(role){
@@ -171,36 +220,31 @@
     if(u.protocol==='http:'&&!['localhost','127.0.0.1'].includes(u.hostname)){lanLobby('Für Internetverbindungen bitte HTTPS verwenden.');return;}
     net.limit=Number($('roomPlayers')?.value||net.limit);net.rounds=Number($('roomRounds')?.value||net.rounds);net.bots=Math.min(net.limit-1,Number($('roomBots')?.value??net.bots));
     netClose();net.server=u.origin;net.role=role;localStorage.setItem('kk_online_server',net.server);
-    const url=(u.protocol==='https:'?'wss://':'ws://')+u.host+'/ws?mode='+role+(role==='host'?'&maxPlayers='+net.limit+'&maxRounds='+net.rounds+'&bots='+net.bots:'&code='+encodeURIComponent(code))+'&id='+getDeviceId();
-    try{net.ws=new WebSocket(url);}catch(e){netClose();lanLobby('Verbindung fehlgeschlagen: '+String(e));return;}
-    net.ws.onopen=()=>{netSend({type:'profile',tank:profile.equipped});};
-    net.ws.onmessage=e=>{try{lanMessage(JSON.parse(e.data));}catch(err){console.error('ONLINE receive',err);}};
-    net.ws.onerror=()=>{};
-    const ws=net.ws;net.ws.onclose=e=>{if(net.ws!==ws||!netActive())return;net.role=null;net.connected=false;net.started=false;lanLobby('Internet-Server nicht erreichbar oder Raum geschlossen. HTTP-Status/Adresse prüfen.');};
+    net.room=role==='guest'?code:'';
+    try{installWebsocket(new WebSocket(websocketURL(role)));}catch(e){netClose();lanLobby('Verbindung fehlgeschlagen: '+String(e));return;}
   }
   function lanMessage(m){
     if(m.type==='welcome'){
       net.room=m.code;net.seat=m.seat;net.limit=m.maxPlayers;net.rounds=m.maxRounds;net.bots=m.bots||0;
+      net.connected=true;net.retryCount=0;net.restoring=!!m.resumed;saveOnlineSession();
       if(m.name){profile.name=safeName(m.name);saveProfile();}
       $('networkLabel').textContent='ONLINE '+net.room+' · SPIELER '+(net.seat+1);
       netSend({type:'profile',tank:profile.equipped});
       if(screen.mode!=='playing')lanLobby();
     }else if(m.type==='roster'){
-      net.players=m.players||[];net.bots=m.bots||0;net.connected=net.players.length>=2;net.started=!!m.started;
+      net.players=m.players||[];net.bots=m.bots||0;net.connected=net.ws?.readyState===1;net.started=!!m.started;
       if(!net.started&&screen.mode==='between')screen.mode='menu';
-      if(net.role==='host'&&screen.mode==='playing'){
-        const seats=new Set(net.players.map(p=>p.seat));
-        for(let i=1;i<screen.players.length;i++)if(!seats.has(i))screen.players[i].hp=0;
-        if(alive().length<2&&!screen.busy)finishRound();
-      }
+      // Disconnected players keep their HP, seat, ammo, team and score.
+      // Temporary mobile disconnections must not count as kills.
       if(['menu','between'].includes(screen.mode)&&!(screen.mode==='between'&&net.started))lanLobby();
-      if(net.role==='host'&&net.started&&screen.mode!=='playing'&&screen.mode!=='between')startOnlineMatch();
-    }else if(m.type==='state'&&net.role==='guest'){
+      if(net.role==='host'&&net.started&&!net.restoring&&screen.mode!=='playing'&&screen.mode!=='between')startOnlineMatch();
+    }else if((m.type==='state'&&net.role==='guest')||(m.type==='resume_state'&&net.role==='host')){
       const d=m.game;if(!d||!Array.isArray(d.players)||!Array.isArray(d.terrain))return;
       const before=screen.mode;
       for(const key of ['mode','round','maxRounds','turn','busy','wind','humans','bots','previewPct','upgradeMode','weaponsRule','windMode','fallDamage','aiDifficulty','settleTimer'])screen[key]=d[key];
       screen.terrain=d.terrain;screen.players=d.players;screen.players.forEach(p=>{if(p.ammo?.shell===null)p.ammo.shell=Infinity;});screen.shots=d.shots||[];screen.particles=d.particles||[];screen.rings=d.rings||[];screen.fallPopups=d.fallPopups||[];screen.current=actual();
       if(screen.mode==='playing')$('modal').classList.add('hidden');
+      if(m.type==='resume_state'){net.restoring=false;toast('GEFECHT WIEDERHERGESTELLT',2);if(screen.mode==='between')renderRoundResult();}
       if(screen.mode==='between'&&(before!=='between'||net.lastStatus!==m.endText)){
         net.lastStatus=m.endText;
         showModal(`<div class="modal-kicker">RUNDE ${screen.round}/${screen.maxRounds}</div><h1 class="modal-title">${escapeHTML(m.endText||'Runde beendet')}</h1><p class="modal-copy">${screen.round===screen.maxRounds?'Match abgeschlossen.':'Warte auf den Gastgeber für die nächste Runde.'}</p><div class="leaderboard">${[...screen.players].sort((a,b)=>b.wins-a.wins||b.kills-a.kills||b.dmg-a.dmg).map(p=>`<div class="result-line"><strong>${escapeHTML(p.name)}</strong><span>${p.wins} Siege</span></div>`).join('')}</div></div>`);
@@ -214,11 +258,17 @@
       if(a.kind==='weapon'&&weapons.some(w=>w.id===a.id))selectWeapon(a.id);
       if(a.kind==='fire')fire();
       net.remoteCommand=false;netBroadcast();
-    }else if(m.type==='error'){lanLobby(m.message||'Unbekannter Internetfehler.');}
+    }else if(m.type==='error'){
+      const message=m.message||'Unbekannter Internetfehler.';
+      if(/expired|closed|not found/i.test(message)){netClose();lanLobby(message);}
+      else lanLobby(message);
+    }
   }
   function netBroadcast(){
-    if(net.role!=='host'||!net.connected||!['playing','between'].includes(screen.mode))return;
+    if(net.role!=='host'||!net.connected||net.restoring||!['playing','between'].includes(screen.mode))return;
     const game={};for(const key of ['mode','round','maxRounds','turn','busy','wind','humans','bots','previewPct','upgradeMode','weaponsRule','windMode','fallDamage','aiDifficulty','settleTimer','terrain','players','shots','particles','rings','fallPopups'])game[key]=screen[key];
+    // Quantized terrain reduces network traffic; it does not affect host physics.
+    game.terrain=screen.terrain.map(Math.round);
     // JSON representation of Infinity is null. Guest-side restores shell ammo to Infinity.
     const wins=winningPlayers(); const endText=screen.mode==='between'?(wins.length?wins.map(p=>p.name).join(' + ')+' gewinnt!':'Unentschieden!'):'';
     netSend({type:'state',game,endText});
@@ -230,7 +280,7 @@
   function startOnlineMatch(){
     if(net.role!=='host')return;
     const peers=rosterHumans().sort((a,b)=>a.seat-b.seat);
-    screen.humans=peers.length;screen.bots=net.bots;screen.maxRounds=Math.max(2,net.rounds);screen.upgradeMode='equal';screen.previewPct=50;
+    screen.humans=peers.length;screen.bots=net.bots;screen.maxRounds=Math.max(2,net.rounds);screen.upgradeMode='equal';screen.previewPct=30;
     peers.forEach((p,i)=>{if(i)screen.seatClasses[i-1]=p.tank;});
     startGame();
     screen.players.forEach((p,i)=>{const peer=net.players.find(q=>q.seat===i);if(peer){p.name=safeName(peer.name);p.team=peer.ally>=0?'P'+Math.min(i,peer.ally):'S'+i;}else p.team='S'+i;});
@@ -384,11 +434,55 @@
     }catch(_){/* Some restricted browsers block WebAudio; the game still works silently. */}
   }
 
+  // Distinct landscapes: wide hills, narrow protective ridges, canyons and spires.
+  // A world unit maps to one terrain sample, independently of the screen resolution.
   function makeTerrain(){
-    const a=[],base=334+rand(-12,14),p1=rand(0,6.3),p2=rand(0,6.3),p3=rand(0,6.3);
-    for(let i=0;i<=W;i++) a.push(clamp(base+52*Math.sin(i/133+p1)+31*Math.sin(i/73+p2)+13*Math.sin(i/29+p3),220,H-65));
-    // mild smoothing for tank placement
+    const kind=Math.floor(rand(0,5)),a=[],base=326+rand(-18,20);
+    const p1=rand(0,6.28),p2=rand(0,6.28),p3=rand(0,6.28);
+    const ridges=Array.from({length:kind===0?1:kind===3?5:3},()=>({
+      center:rand(110,W-110),width:rand(kind===3?13:27,kind===3?31:87),height:rand(54,kind===2?195:155),sign:kind===4&&Math.random()<.4?-1:1
+    }));
+    // A tall mountain in the middle is deliberately common; a player can
+    // have to carve a tunnel/trench or fire high over the peak to hit a target.
+    if(kind===1||kind===2)ridges.push({center:rand(405,595),width:rand(32,76),height:rand(115,210),sign:1});
+    for(let i=0;i<=W;i++){
+      let y=base+(kind===0?70:kind===3?29:48)*Math.sin(i/(kind===4?85:158)+p1)
+        + (kind===3?23:38)*Math.sin(i/(kind===3?31:77)+p2)
+        + (kind===3?8:13)*Math.sin(i/21+p3);
+      for(const r of ridges){
+        const d=Math.abs(i-r.center)/r.width;
+        if(d<2.6){
+          const shape=kind===3?Math.max(0,1-d):Math.exp(-.5*d*d);
+          y-=r.sign*r.height*shape;
+        }
+      }
+      a.push(clamp(y,105,H-55));
+    }
     screen.terrain=a;
+  }
+  function repositionPlayers(){
+    // Shuffle spatial slots anew each round, with at least one different slot
+    // when more than one player exists. Preserves the player IDs and alliances.
+    const n=screen.players.length, slots=Array.from({length:n},(_,i)=>i);
+    for(let i=n-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[slots[i],slots[j]]=[slots[j],slots[i]];}
+    if(n>1&&screen.players.every((p,i)=>Math.abs(p.x-(86+(W-172)*slots[i]/(n-1)))<40))slots.push(slots.shift());
+    for(let i=0;i<n;i++){
+      const p=screen.players[i];
+      p.x=clamp(Math.round(86+(W-172)*slots[i]/(n-1)+rand(-17,17)),40,W-40);
+      // Gently level the immediate footprint, never flatten the protective
+      // peak between players (terrain barriers should remain meaningful).
+      const cx=Math.round(p.x),target=screen.terrain[cx];
+      for(let dx=-19;dx<=19;dx++){
+        const k=cx+dx;if(k<0||k>W)continue;
+        const kblend=dx===0?1:Math.max(0,1-Math.abs(dx)/20);
+        screen.terrain[k]=screen.terrain[k]*(1-kblend)+target*kblend;
+      }
+      p.y=screen.terrain[cx]-10;
+    }
+    for(const p of screen.players){
+      const other=screen.players.filter(q=>q.id!==p.id).sort((a,b)=>Math.abs(a.x-p.x)-Math.abs(b.x-p.x))[0];
+      p.angle=other&&other.x<p.x?124:56;
+    }
   }
   function makePlayers(){
     const total=screen.humans+screen.bots;
@@ -419,7 +513,7 @@
   }
   function newRound(){
     screen.round++;screen.mode='playing';screen.busy=false;screen.aiTimer=0;screen.shots=[];screen.particles=[];screen.rings=[];screen.fallPopups=[];screen.flash=0;screen.settleTimer=-1;
-    makeTerrain();screen.players.forEach(p=>{p.hp=p.maxHp;p.nativeShield=p.maxNativeShield;p.extraShield=p.maxExtraShield;p.shield=p.nativeShield+p.extraShield;p.moveRemaining=p.maxMove;p.y=screen.terrain[Math.round(p.x)]-10;p.angle=p.x>W*.65?124:56;});
+    makeTerrain();repositionPlayers();screen.players.forEach(p=>{p.hp=p.maxHp;p.nativeShield=p.maxNativeShield;p.extraShield=p.maxExtraShield;p.shield=p.nativeShield+p.extraShield;p.moveRemaining=p.maxMove;});
     screen.wind=Math.round(rand(-windCeiling(),windCeiling()));screen.turn=(screen.round-1)%screen.players.length;
     $('modal').classList.add('hidden');nextTurn(screen.turn,true);
     toast('RUNDE '+screen.round+' / '+screen.maxRounds,2.0);
@@ -430,7 +524,7 @@
     const n=screen.players.length;
     let idx=includeStart?start:(start+1)%n;
     for(let i=0;i<n;i++){if(screen.players[idx].hp>0)break;idx=(idx+1)%n;}
-    screen.turn=idx;const p=actual();screen.current=p;screen.busy=false;screen.aiTimer=p.human?0:55;
+    screen.turn=idx;net.turnTime=performance.now();const p=actual();screen.current=p;screen.busy=false;screen.aiTimer=p.human?0:55;
     p.moveRemaining=p.maxMove; // Refill on this player's turn, never during someone else's.
     screen.wind=clamp(screen.wind+Math.round(rand(-4,4)),-windCeiling(),windCeiling());
     updateControls();renderRoster();
@@ -652,7 +746,7 @@
   function showHelp(){
     const wasHidden=$('modal').classList.contains('hidden');
     const fallback=()=>{if(wasHidden)$('modal').classList.add('hidden');else if(screen.mode==='menu')showHQ(screen.hqTab);else if(screen.mode==='shop')openShop();else if(screen.mode==='between')renderRoundResult();else $('modal').classList.add('hidden');};
-    showModal(`<div class="modal-kicker">SPIELANLEITUNG</div><h1 class="modal-title">So funktioniert <em>KRATERKRACH.</em></h1><ol class="help-list"><li>Wähle Menschen und Computergegner. Alle menschlichen Spieler benutzen nacheinander dasselbe Gerät.</li><li>Stelle den Winkel zwischen 5° und 175° ein. 90° schießt senkrecht nach oben, über 90° nach links.</li><li>Wähle die Schusskraft und achte auf Windrichtung und Windstärke.</li><li>Vor dem Schuss können alle Panzer fahren: Scout bis zu 90 m, andere Panzer bis zu 30 m pro eigenem Zug. Nach FEUER, während des Projektilfluges und während fremder Züge ist Bewegung gesperrt.</li><li>Im Hangar kannst du fünf technische Systeme mit jeweils fünf zunehmend teureren Schritten ausbauen: Antrieb, Schaden, Panzerung, Zieloptik und äußeren Zusatzschild. Ausschließlich Spiel-Credits. Jeder Panzer darf alles aufrüsten.</li><li>Der Guardian besitzt zusätzlich seinen eingebauten, inneren Schild. Schildmodule bilden eine äußere Schicht, die zuerst Treffer auffängt. EMP neutralisiert beide.</li><li>Fallschaden nach Panzerhöhen: bis 1 Panzerhöhe 0 HP, bei 2/3/4/5/6 Höhen ungefähr 2/4/6/8/11 HP, maximal 12 HP. Zusätzliche Panzerung hilft etwas; im Raum abschaltbar.</li><li>Die CPU-Schwierigkeit lässt sich vor dem Match einstellen. Leicht ist die Voreinstellung.</li><li>Wähle eine Waffe und drücke FEUER. Der Raumgeber legt Zielhilfe (0–100 %), Wind, Waffen, KI, Ausgleich und Fallschaden fest. 100 % empfiehlt sich zum Üben oder für Kinder, 25 % als Turnierregel. Die Vorschau verrät bei reduzierter Zielhilfe nicht das Einschlagsende.</li><li>Wer als Letzter am Leben bleibt, gewinnt die Runde. Treffer bringen Credits. Zwischen den Runden kannst du zusätzliche Munition kaufen.</li><li>Auf dem PC: Pfeiltasten links/rechts für Winkel, hoch/runter für Kraft und Leertaste zum Feuern.</li></ol><div class="modal-actions"><button id="closeHelp" class="primary-button">VERSTANDEN</button></div>`);
+    showModal(`<div class="modal-kicker">SPIELANLEITUNG</div><h1 class="modal-title">So funktioniert <em>KRATERKRACH.</em></h1><ol class="help-list"><li>Wähle Menschen und Computergegner. Alle menschlichen Spieler benutzen nacheinander dasselbe Gerät.</li><li>Stelle den Winkel zwischen 5° und 175° ein. 90° schießt senkrecht nach oben, über 90° nach links.</li><li>Wähle die Schusskraft und achte auf Windrichtung und Windstärke.</li><li>Vor dem Schuss können alle Panzer fahren: Scout bis zu 90 m, andere Panzer bis zu 30 m pro eigenem Zug. Nach FEUER, während des Projektilfluges und während fremder Züge ist Bewegung gesperrt.</li><li>Im Hangar kannst du fünf technische Systeme mit jeweils fünf zunehmend teureren Schritten ausbauen: Antrieb, Schaden, Panzerung, Zieloptik und äußeren Zusatzschild. Ausschließlich Spiel-Credits. Jeder Panzer darf alles aufrüsten.</li><li>Der Guardian besitzt zusätzlich seinen eingebauten, inneren Schild. Schildmodule bilden eine äußere Schicht, die zuerst Treffer auffängt. EMP neutralisiert beide.</li><li>Fallschaden nach Panzerhöhen: bis 1 Panzerhöhe 0 HP, bei 2/3/4/5/6 Höhen ungefähr 2/4/6/8/11 HP, maximal 12 HP. Zusätzliche Panzerung hilft etwas; im Raum abschaltbar.</li><li>Die CPU-Schwierigkeit lässt sich vor dem Match einstellen. Leicht ist die Voreinstellung.</li><li>Die Online-Zielhilfe zeigt standardmäßig nur 30 % der Flugzeit und ein Windfenster von maximal links bis maximal rechts. Die mittlere Linie bedeutet Windstille. Der tatsächliche Wind verändert den Einschlag, wird aber nie in die Zielkurven eingerechnet. Artillerie erhält 10 Prozentpunkte zusätzliche Sicht.</li><li>Im Handy-Querformat nutzt das Spielfeld möglichst viel Platz. Mit der Schaltfläche QUERFORMAT kannst du, soweit vom Browser erlaubt, in den Vollbildmodus wechseln. Online-Spieler können nach kurzzeitigem Netzverlust ihren Platz zurückerhalten.</li><li>Wer als Letzter am Leben bleibt, gewinnt die Runde. Treffer bringen Credits. Zwischen den Runden kannst du zusätzliche Munition kaufen.</li><li>Auf dem PC: Pfeiltasten links/rechts für Winkel, hoch/runter für Kraft und Leertaste zum Feuern.</li></ol><div class="modal-actions"><button id="closeHelp" class="primary-button">VERSTANDEN</button></div>`);
     $('closeHelp').onclick=fallback;
   }
   function renderRoster(){
@@ -660,7 +754,8 @@
   }
   function updateControls(){
     const p=actual(),ok=screen.mode==='playing'&&!screen.busy&&p&&p.human&&localTurn();
-    $('previewIndicator').textContent=effectivePreview(p)+' %'+(p&&p.classId==='artillery'?' · ARTILLERIEOPTIK':'');
+    document.body.classList.toggle('battle-live',screen.mode==='playing');
+    $('previewIndicator').textContent='WINDKORRIDOR · '+effectivePreview(p)+' %'+(p&&p.classId==='artillery'?' · ARTILLERIEOPTIK':'');
     $('roundLabel').textContent=screen.round+' / '+screen.maxRounds;
     $('playerLabel').textContent=p?p.name:'–';
     $('playerLabel').style.color=p?p.color:'#fff';
@@ -668,7 +763,8 @@
     $('moneyLabel').textContent=p?money(p.cash):'–';
     $('turnStatus').textContent=screen.mode!=='playing'?'PAUSE':screen.busy?'EINSCHLAG':p&&p.human?(localTurn()?'BEREIT':'GEGNER AM ZUG'):'CPU ZIELT';
     $('angleRange').value=p?p.angle:55;$('powerRange').value=p?p.power:65;
-    $('angleNumber').textContent=(p?p.angle:55)+'°';$('powerNumber').textContent=(p?p.power:65)+'%';
+    $('angleNumber').textContent=(!netActive()||localTurn())?(p?p.angle:55)+'°':'—';
+    $('powerNumber').textContent=(!netActive()||localTurn())?(p?p.power:65)+'%':'—';
     $('controlHeading').textContent=ok?'Deine nächste Salve':screen.mode!=='playing'?'Gefecht unterbrochen':'Bitte abwarten';
     ['angleRange','powerRange','angleMinus','anglePlus','powerMinus','powerPlus','fireButton'].forEach(id=>{$(id).disabled=!ok;});
     const selected=weapons.find(w=>w.id===(p?p.selected:'shell'))||weapons[0];
@@ -806,7 +902,7 @@
     screen.particles=screen.particles.filter(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=.12*dt;p.vx*=.989;p.life-=dt;return p.life>0;});
     screen.rings=screen.rings.filter(r=>{r.r+=(r.max-r.r)*.16*dt;r.life-=dt;return r.life>0;});
     screen.fallPopups=screen.fallPopups.filter(v=>{v.y-=.28*dt;v.life-=dt;return v.life>0;});
-    if(screen.mode!=='playing'||net.role==='guest')return;
+    if(screen.mode!=='playing'||net.role==='guest'||(net.role==='host'&&!net.connected))return;
     if(screen.aiTimer>0&&!screen.busy){screen.aiTimer-=dt;if(screen.aiTimer<=0){const p=actual();if(!p.human){pickBotShot(p);fire();}}}
     if(!screen.busy)return;
     if(screen.shots.length){
@@ -854,7 +950,7 @@
       ctx.globalAlpha=.24;for(let x=11;x<W;x+=19){const y=screen.terrain[x]+17+(x*13%48);ctx.fillStyle=x%3?'#c3b385':'#243a36';ctx.fillRect(x,y,2,2);}ctx.globalAlpha=1;
     }
     for(const p of screen.players)drawTank(p);
-    const p=actual();if(screen.mode==='playing'&&p&&p.human&&!screen.busy&&p.hp>0)drawTrajectory(p);
+    const p=actual();if(screen.mode==='playing'&&p&&p.human&&!screen.busy&&p.hp>0&&localTurn())drawTrajectory(p);
     for(const s of screen.shots){ctx.save();ctx.shadowBlur=14;ctx.shadowColor=s.weapon==='nuke'?'#fff690':'#ffd598';ctx.fillStyle=s.weapon==='nuke'?'#fff3b2':s.weapon==='ember'?'#fc7943':'#ffdf90';ctx.beginPath();ctx.arc(s.x,s.y,s.weapon==='nuke'?7:4.5,0,Math.PI*2);ctx.fill();ctx.restore();}
     for(const r of screen.rings){ctx.strokeStyle=r.color;ctx.globalAlpha=clamp(r.life/23,0,1)*.7;ctx.lineWidth=3;ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,Math.PI*2);ctx.stroke();}ctx.globalAlpha=1;
     for(const q of screen.particles){ctx.globalAlpha=clamp(q.life/q.maxLife,0,1);ctx.fillStyle=q.color;ctx.fillRect(q.x,q.y,q.size,q.size);}ctx.globalAlpha=1;
@@ -905,27 +1001,50 @@
     if(screen.previewPct<=0)return 0;
     return Math.min(screen.previewPct===100?100:95,screen.previewPct+(p?p.previewBonus:0));
   }
-  function drawTrajectory(p){
-    // The preview duration depends only on launch conditions and the firing tank's
-    // ground elevation, never on the actual impact. Otherwise the cutoff point
-    // would reveal the precise impact time even with a 50% preview.
-    if(effectivePreview(p)<=0)return;
-    const a=p.angle*Math.PI/180;
-    let x=p.x+Math.cos(a)*22,y=p.y-5-Math.sin(a)*22;
-    let vx=Math.cos(a)*p.power*.23,vy=-Math.sin(a)*p.power*.23;
-    const launchGround=screen.terrain[clamp(Math.round(p.x),0,W)];
-    const verticalDistance=Math.max(0,launchGround-y);
-    const fullFlight=(-vy+Math.sqrt(vy*vy+2*G*verticalDistance))/G;
-    const maxSteps=Math.min(215,Math.ceil(fullFlight*effectivePreview(p)/100));
-    ctx.fillStyle='#f6e0b28a';
-    for(let t=0;t<maxSteps;t++){
-      x+=vx;y+=vy;vx+=screen.wind*.004;vy+=G;
-      if(x<0||x>W||y>H)break;
-      if(y>=0&&y>=screen.terrain[clamp(Math.round(x),0,W)])break;
-      if(t%5===0){ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);ctx.fill();}
-    }
+  function trajectoryEnvelope(p){
+    // Min/max wind scenarios only. Never use screen.wind or a predicted
+    // impact location in the visual guide. Actual shots still use real wind.
+    const a=p.angle*Math.PI/180,v=p.power*.23;
+    const x0=p.x+Math.cos(a)*22,y0=p.y-5-Math.sin(a)*22;
+    const vx0=Math.cos(a)*v,vy0=-Math.sin(a)*v;
+    const verticalDistance=Math.max(0,screen.terrain[clamp(Math.round(p.x),0,W)]-y0);
+    const fullFlight=(-vy0+Math.sqrt(vy0*vy0+2*G*verticalDistance))/G;
+    const steps=Math.min(215,Math.ceil(fullFlight*effectivePreview(p)/100));
+    return [-windCeiling(),0,windCeiling()].map(wind=>{
+      let x=x0,y=y0,vx=vx0,vy=vy0;const pts=[];
+      for(let t=0;t<steps;t++){
+        x+=vx;y+=vy;vx+=wind*.004;vy+=G;
+        if(x<0||x>W||y>H)break;
+        if(y>=0&&y>=screen.terrain[clamp(Math.round(x),0,W)])break;
+        if(t%3===0)pts.push({x,y});
+      }
+      return pts;
+    });
   }
-  function frame(now){const dt=screen.last?Math.min(2.3,(now-screen.last)/16.666):1;screen.last=now;physics(dt);if(net.role==='host'&&now-net.lastBroadcast>110){net.lastBroadcast=now;netBroadcast();}render();requestAnimationFrame(frame);}
+  function drawTrajectory(p){
+    if(effectivePreview(p)<=0)return;
+    const [low,mid,high]=trajectoryEnvelope(p);
+    ctx.save();
+    // Translucent fan marks the extreme possible winds, not the current one.
+    const n=Math.min(low.length,high.length);
+    if(n>1){ctx.beginPath();low.slice(0,n).forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));
+      high.slice(0,n).reverse().forEach(q=>ctx.lineTo(q.x,q.y));ctx.closePath();ctx.fillStyle='rgba(106,217,239,.13)';ctx.fill();}
+    for(const [points,color] of [[low,'#72d4f2'],[high,'#72d4f2'],[mid,'#f5d9a3']]){
+      ctx.beginPath();points.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));
+      ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash(points===mid?[2,8]:[6,5]);ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function frame(now){
+    const dt=screen.last?Math.min(2.3,(now-screen.last)/16.666):1;
+    screen.last=now;physics(dt);
+    if(net.role==='host'&&net.connected&&now-net.lastBroadcast>135){net.lastBroadcast=now;netBroadcast();}
+    if(net.role==='host'&&net.connected&&screen.mode==='playing'&&!screen.busy&&net.started){
+      const p=actual(),peer=net.players.find(q=>q.seat===screen.turn);
+      if(p?.human&&peer&&!peer.connected&&now-net.turnTime>45000){toast('VERBINDUNG FEHLT · ZUG ÜBERSPRUNGEN',2);nextTurn(screen.turn);}
+    }
+    render();requestAnimationFrame(frame);
+  }
   function wire(){
     $('angleRange').oninput=e=>setControl('angle',e.target.value);
     $('powerRange').oninput=e=>setControl('power',e.target.value);
@@ -937,6 +1056,12 @@
     $('newButton').onclick=()=>{if(netActive()){lanLobby();return;}if(screen.mode==='playing'&&!confirm('Aktuelles Gefecht beenden und zum Hangar zurückkehren?'))return;showMenu();};
     $('hangarButton').onclick=()=>{if(netActive()){lanLobby();return;}if(screen.mode==='playing'&&!confirm('Aktuelles Gefecht beenden und zum Hangar zurückkehren?'))return;showMenu();};
     $('helpButton').onclick=showHelp; $('lanButton').onclick=()=>lanLobby();
+    $('orientationButton').onclick=async()=>{
+      try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();}catch(_){}
+      try{await window.screen.orientation?.lock?.('landscape');}catch(_){}
+    };
+    window.addEventListener('online',()=>{if(netActive()&&!net.connected)resumeOnline();});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&netActive()&&!net.connected)resumeOnline();});
     $('soundButton').onclick=()=>{screen.sound=!screen.sound;
       $('soundButton').textContent=screen.sound?'♫ AN':'♫ AUS';
       try{localStorage.setItem('kk_sound',screen.sound?'on':'off');}catch(_){}
@@ -961,8 +1086,15 @@
     try{screen.sound=localStorage.getItem('kk_sound')!=='off';}catch(_){}
     $('soundButton').textContent=screen.sound?'♫ AN':'♫ AUS';
     showMenu();updateControls();renderRoster();requestAnimationFrame(frame);
+    // Reloading the tab after an accidental menu/navigation tap should reconnect.
+    try{const session=JSON.parse(localStorage.getItem(SESSION_KEY)||'null');
+      if(session?.code&&session?.server&&['host','guest'].includes(session.role)){
+        Object.assign(net,{role:session.role,room:session.code,server:session.server,limit:session.limit||6,bots:session.bots||0,rounds:session.rounds||3,connected:false});
+        setTimeout(resumeOnline,400);
+      }
+    }catch(_){}
     if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
   }
   wire();
-  window.KraterkrachDebug={openLAN:()=>lanLobby(),net:()=>({role:net.role,code:net.room,seat:net.seat,connected:net.connected,players:net.players,rounds:net.rounds}),getState:()=>({mode:screen.mode,tab:screen.hqTab,round:screen.round,players:screen.players.map(p=>({name:p.name,hp:p.hp,maxHp:p.maxHp,shield:p.shield,classId:p.classId,upgradeLevel:p.upgradeLevel,nativeShield:p.nativeShield,extraShield:p.extraShield,attack:p.attack,previewBonus:p.previewBonus,maxMove:p.maxMove,moveRemaining:p.moveRemaining,x:p.x,selected:p.selected,ammo:{...p.ammo},cash:p.cash,wins:p.wins})),shots:screen.shots.length,busy:screen.busy,turn:screen.turn,aiDifficulty:screen.aiDifficulty,previewPct:screen.previewPct,upgradeMode:screen.upgradeMode,weaponsRule:screen.weaponsRule,windMode:screen.windMode,fallDamage:screen.fallDamage,sound:screen.sound,profile:JSON.parse(JSON.stringify(profile)),reward:screen.matchReward}),start:()=>startGame(),open:tab=>showHQ(tab),test:{stats:(id,levels)=>tankStats(id,levels),fall:(p,fall)=>fallingDamage(fall,p.resist),tankHeight:TANK_HEIGHT,costs:UPGRADE_COSTS.slice(),effectivePreview:(bonus,base)=>base<=0?0:Math.min(base===100?100:95,base+bonus),weaponAllowed:id=>weaponAllowed(id),setTerrain:(i,y)=>{screen.terrain[i]=y;},settle:()=>settleTanks(),nextTurn:()=>nextTurn(screen.turn)}};
+  window.KraterkrachDebug={openLAN:()=>lanLobby(),net:()=>({role:net.role,code:net.room,seat:net.seat,connected:net.connected,players:net.players,rounds:net.rounds}),getState:()=>({mode:screen.mode,tab:screen.hqTab,round:screen.round,players:screen.players.map(p=>({name:p.name,hp:p.hp,maxHp:p.maxHp,shield:p.shield,classId:p.classId,upgradeLevel:p.upgradeLevel,nativeShield:p.nativeShield,extraShield:p.extraShield,attack:p.attack,previewBonus:p.previewBonus,maxMove:p.maxMove,moveRemaining:p.moveRemaining,x:p.x,selected:p.selected,ammo:{...p.ammo},cash:p.cash,wins:p.wins})),shots:screen.shots.length,busy:screen.busy,turn:screen.turn,aiDifficulty:screen.aiDifficulty,previewPct:screen.previewPct,upgradeMode:screen.upgradeMode,weaponsRule:screen.weaponsRule,windMode:screen.windMode,fallDamage:screen.fallDamage,sound:screen.sound,profile:JSON.parse(JSON.stringify(profile)),reward:screen.matchReward}),start:()=>startGame(),open:tab=>showHQ(tab),test:{stats:(id,levels)=>tankStats(id,levels),fall:(p,fall)=>fallingDamage(fall,p.resist),tankHeight:TANK_HEIGHT,costs:UPGRADE_COSTS.slice(),effectivePreview:(bonus,base)=>base<=0?0:Math.min(base===100?100:95,base+bonus),weaponAllowed:id=>weaponAllowed(id),setTerrain:(i,y)=>{screen.terrain[i]=y;},settle:()=>settleTanks(),nextTurn:()=>nextTurn(screen.turn),terrain:()=>screen.terrain.slice(),terrainRegenerate:()=>{makeTerrain();repositionPlayers();return screen.terrain.slice();},windEnvelope:()=>actual()?trajectoryEnvelope(actual()):null}};
 })();

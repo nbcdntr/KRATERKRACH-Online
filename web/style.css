@@ -150,3 +150,85 @@ body{background:radial-gradient(ellipse 80% 65% at 50% -10%,#2a3935,#0d1719 67%,
 
 .modal-legal-nav{display:flex;justify-content:flex-end;gap:14px;padding:4px 4px 8px;font:500 10px system-ui,sans-serif}.modal-legal-nav a{color:#bfdfd3;text-decoration:underline;text-underline-offset:3px}
 @media(max-width:680px){.modal-legal-nav{font-size:9px;padding:2px 2px 6px}}
+
+/* KRATERKRACH 1.1 – landscape-first battle / usable touch controls. */
+.range-wrap .nudge{flex:0 0 48px;width:48px;height:48px;min-height:48px;font-size:29px;font-weight:900;touch-action:manipulation}
+.range-wrap input[type="range"]{min-height:46px;height:46px;touch-action:pan-x;accent-color:#f2c873;cursor:ew-resize}
+.range-wrap input[type="range"]::-webkit-slider-thumb{width:30px;height:30px;appearance:none;border-radius:50%;background:#f2c873;border:2px solid #111}
+.orientation-button{border-color:#a7d9cb;color:#a7eacb}
+.rotate-hint{display:none;position:absolute;left:50%;transform:translateX(-50%);bottom:8px;white-space:nowrap;pointer-events:none;z-index:3;background:rgba(9,20,26,.91);border:1px solid #92c5b8;border-radius:8px;color:#e4fbef;font-size:12px;font-weight:850;padding:8px 12px}
+@media (orientation:portrait) and (max-width:700px){body.battle-live .rotate-hint{display:block}}
+@media (orientation:landscape) and (max-height:650px){
+ html,body{height:100%;width:100%;overflow:hidden}
+ body.battle-live .app{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,29%);grid-template-rows:29px 27px minmax(0,1fr) 26px;grid-template-areas:"header header" "hud hud" "arena controls" "roster controls";gap:4px 7px;width:100%;height:100dvh;max-width:none;padding:4px max(5px,env(safe-area-inset-right)) 4px max(5px,env(safe-area-inset-left));overflow:hidden}
+ body.battle-live .app-header{grid-area:header;min-height:0;margin:0;padding:0;gap:6px;overflow:hidden}
+ body.battle-live .brand-symbol{width:22px;height:22px;font-size:13px}
+ body.battle-live .brand-name{font-size:16px}
+ body.battle-live .brand-sub{display:none}
+ body.battle-live .header-actions{gap:4px;max-width:none;flex-wrap:nowrap}
+ body.battle-live .header-btn{font-size:10px;padding:5px 8px;white-space:nowrap;min-height:26px}
+ body.battle-live .kk-legal-link,body.battle-live #helpButton{display:none}
+ body.battle-live .hud{grid-area:hud;grid-template-columns:.7fr 1.6fr .8fr .8fr;gap:4px;margin:0;min-height:0}
+ body.battle-live .hud-piece{padding:1px 8px;min-width:0;display:flex;align-items:center;gap:7px}
+ body.battle-live .hud-label{font-size:8px;margin:0}
+ body.battle-live .hud strong{font-size:12px}
+ body.battle-live .arena-shell{grid-area:arena;min-width:0;min-height:0;overflow:hidden;border-width:1px}
+ body.battle-live .arena-shell canvas{height:100%;width:100%;aspect-ratio:auto}
+ body.battle-live .arena-top-left,body.battle-live .arena-top-right{font-size:9px;top:4px;padding:4px 6px}
+ body.battle-live .roster{grid-area:roster;display:flex;gap:3px;min-height:0;min-width:0;margin:0;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
+ body.battle-live .player-chip{flex:1 0 100px;max-width:none;min-width:96px;padding:1px 5px;scroll-snap-align:start;min-height:0}
+ body.battle-live .chip-top{font-size:9px}
+ body.battle-live .chip-score{font-size:8px}
+ body.battle-live .health-track{height:2px;margin-top:1px}
+ body.battle-live .control-panel{grid-area:controls;min-height:0;min-width:0;padding:5px 7px;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:4px;scrollbar-width:thin}
+ body.battle-live .control-heading{display:none}
+ body.battle-live .aim-grid{grid-template-columns:1fr;gap:2px;flex:0 0 auto}
+ body.battle-live .field-label{font-size:9px;margin:0 2px}
+ body.battle-live .field-label output{font-size:13px}
+ body.battle-live .range-wrap{gap:5px;margin:0}
+ body.battle-live .range-wrap .nudge{flex-basis:46px;height:46px;width:46px;font-size:28px}
+ body.battle-live .range-wrap input[type="range"]{height:44px;min-height:44px}
+ body.battle-live .weapons-head{margin:0;min-height:10px}
+ body.battle-live .weapons-head .eyebrow{font-size:8px}
+ body.battle-live #weaponHint{display:none}
+ body.battle-live .weapon-strip{grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;flex:0 0 auto}
+ body.battle-live .weapon-option{min-height:33px;height:33px;padding:3px 5px;text-align:left;display:flex;align-items:center;gap:3px}
+ body.battle-live .weapon-option .weapon-symbol{font-size:14px;margin:0}
+ body.battle-live .weapon-option .weapon-label{font-size:8px;min-height:0;line-height:1.05;overflow:hidden}
+ body.battle-live .weapon-option .weapon-count{font-size:8px;top:1px;right:3px}
+ body.battle-live .ability-row{display:flex;flex-wrap:nowrap;gap:4px;padding:2px 4px;margin:0;flex:0 0 auto}
+ body.battle-live .ability-label{display:none}
+ body.battle-live .ability-row button{flex:1;min-width:0;min-height:39px;font-size:11px;padding:5px}
+ body.battle-live .shield-badge{display:none}
+ body.battle-live .fire-row{margin:0;padding:3px 0 0;gap:4px;flex:0 0 auto}
+ body.battle-live .fire-info{display:none}
+ body.battle-live .fire-button{flex:1;min-width:0;min-height:46px;padding:6px;font-size:18px}
+ body.battle-live .app-footer{display:none}
+ body.battle-live .kk-legal-dock{display:none}
+ body.battle-live .modal-backdrop{z-index:100}
+}
+@media (orientation:landscape) and (max-height:410px){
+ body.battle-live .weapon-option{min-height:28px;height:28px}
+ body.battle-live .range-wrap .nudge{height:43px;min-height:43px}
+ body.battle-live .range-wrap input[type="range"]{height:42px;min-height:42px}
+}
+@media (orientation:portrait) and (max-width:700px){
+ .nudge,.range-wrap .nudge{width:48px;height:48px;flex-basis:48px;font-size:28px}
+ .range-wrap input[type="range"]{min-height:45px;height:45px}
+}
+/* Weapon selector uses one swipeable rail in landscape. Keeps FIRE visible. */
+@media (orientation:landscape) and (max-height:650px){
+ body.battle-live .control-panel{gap:2px;padding:3px 5px}
+ body.battle-live .weapons-head{margin:0;min-height:9px}
+ body.battle-live .weapon-strip{display:flex;gap:4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scroll-snap-type:x proximity;min-height:47px;max-height:47px;touch-action:pan-x}
+ body.battle-live .weapon-option{height:43px;min-height:43px;min-width:89px;max-width:89px;flex:0 0 89px;scroll-snap-align:start;padding:4px 6px}
+ body.battle-live .weapon-option .weapon-symbol{font-size:18px}
+ body.battle-live .weapon-option .weapon-label{font-size:8px}
+ body.battle-live .ability-row button{min-height:37px}
+ body.battle-live .fire-button{min-height:45px;font-size:19px}
+}
+
+@media (orientation:landscape) and (max-height:650px){
+ body.battle-live .aim-hint{display:none}
+ body.battle-live .arena-top-right{right:6px;top:5px;font-size:8px}
+}
