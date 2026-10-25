@@ -1,0 +1,1 @@
+KRATERKRACH Online 1.0 Android Studio project. Open this android directory. Legal Notice and Privacy Notice are included in app/src/main/assets. The online server must be deployed separately. Complete legal.html and privacy.html provider fields BEFORE a public launch.

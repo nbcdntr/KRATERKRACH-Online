@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: kraterkrach-online
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /health
+    autoDeployTrigger: commit
