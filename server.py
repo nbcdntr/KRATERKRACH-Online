@@ -190,8 +190,19 @@ async def ws_handler(req):
             elif kind=='state' and seat==0 and room['started']:
                 game=data.get('game')
                 if not isinstance(game,dict) or not isinstance(game.get('players'),list) or len(game['players'])!=room.get('started_players',0):continue
-                room['last_state']={'game':game,'endText':str(data.get('endText',''))[:150]}
-                await asyncio.gather(*(send(p['ws'],{'type':'state',**room['last_state']}) for s,p in list(room['peers'].items()) if s!=0))
+                # Merge compact snapshots so a reconnect always receives the latest terrain.
+                prior=(room.get('last_state') or {}).get('game') or {}
+                room['last_state']={'game':{**prior,**game},'endText':str(data.get('endText',''))[:150]}
+                # Send only the DELTA to active clients; keep complete snapshot for resume.
+                await asyncio.gather(*(send(p['ws'],{'type':'state','game':game,'endText':room['last_state']['endText']}) for s,p in list(room['peers'].items()) if s!=0))
+            elif kind=='aim_live' and seat==0 and room['started']:
+                target=data.get('seat');angle=data.get('angle');power=data.get('power');weapon=data.get('weapon')
+                if type(target)!=int or target not in room['peers']:continue
+                if type(angle) not in (int,float) or not 5<=angle<=175:continue
+                if type(power) not in (int,float) or not 20<=power<=100:continue
+                if weapon not in {'shell','heavy','napalm','cluster','digger','nuke','salvo','bunker','emp'}:continue
+                msg={'type':'aim_live','seat':target,'angle':angle,'power':power,'weapon':weapon}
+                await asyncio.gather(*(send(p['ws'],msg) for s,p in list(room['peers'].items()) if s!=0))
             elif kind=='action' and seat!=0 and room['started']:
                 a=data.get('action',{})
                 if not isinstance(a,dict) or a.get('kind') not in {'aim','move','weapon','fire'}:continue
@@ -210,7 +221,7 @@ async def ws_handler(req):
     return ws
 
 async def health(req):
-    return web.json_response({'ok':True,'version':'1.1','active_rooms':len(rooms),'max_seats':6})
+    return web.json_response({'ok':True,'version':'1.2','active_rooms':len(rooms),'max_seats':6})
 
 async def cleanup(app):
     while True:
