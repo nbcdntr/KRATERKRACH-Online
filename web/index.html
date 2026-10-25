@@ -7,13 +7,13 @@
   <meta name="description" content="KRATERKRACH: Ein eigenständiges, rundenbasiertes Panzerspiel für mehrere Spieler an einem Gerät." />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css"/>
+  <link rel="stylesheet" href="style.css?v=1.2.0"/>
   <title>KRATERKRACH · Panzerschlacht</title>
 </head>
 <body>
   <main class="app" id="app">
     <header class="app-header">
-      <div class="brand"><div class="brand-symbol" aria-hidden="true">⌖</div><div><div class="brand-name">KRATER<span>KRACH</span></div><div class="brand-sub">DIE PANZER ARENA · VERSION 1.1 ONLINE · TACTICAL</div></div></div>
+      <div class="brand"><div class="brand-symbol" aria-hidden="true">⌖</div><div><div class="brand-name">KRATER<span>KRACH</span></div><div class="brand-sub">DIE PANZER ARENA · VERSION 1.2 ONLINE · TACTICAL</div></div></div>
       <div class="header-actions"><a href="legal.html" class="header-btn kk-legal-link" title="Impressum, Nutzungsbedingungen und Datenschutz">IMPRESSUM</a><button id="orientationButton" class="header-btn orientation-button" title="Querformat / Vollbild">⤾ QUERFORMAT</button><button id="lanButton" class="header-btn" style="border-color:#6edcbd;color:#9dfbdd">ONLINE SPIEL</button><button id="hangarButton" class="header-btn">HANGAR</button><button id="soundButton" class="header-btn" aria-label="Ton aktivieren oder deaktivieren" title="Ton">♫ AUS</button><button id="helpButton" class="header-btn">ANLEITUNG</button><button id="newButton" class="header-btn">MENÜ</button></div>
     </header>
     <section class="hud" aria-label="Spielstatus">
@@ -40,10 +40,10 @@
       <div class="weapon-strip" id="weaponStrip"></div>
       <div class="ability-row" id="abilityRow"></div><div class="fire-row"><div class="fire-info"><span id="weaponTitle">STANDARDGRANATE</span><small id="weaponDescription">Unbegrenzt verfügbar</small></div><button id="fireButton" class="fire-button"><span>FEUER!</span><span class="fire-glyph">↗</span></button></div>
     </section>
-    <footer class="app-footer"><span>KRATERKRACH 1.1 · Created by T. Gligor · Free to play · 2–6 tanks · 2–10 rounds</span><span>Am besten im Querformat</span></footer>
+    <footer class="app-footer"><span>KRATERKRACH 1.2 · Created by T. Gligor · Free to play · 2–6 tanks · 2–10 rounds</span><span>Am besten im Querformat</span></footer>
   </main>
   <nav class="kk-legal-dock" aria-label="Legal information"><a href="legal.html">Impressum / Legal</a><a href="privacy.html">Datenschutz / Privacy</a><span>Created by T. Gligor · Free to play</span></nav>
   <div class="modal-backdrop" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-card" id="modalContent"></div></div>
-  <script src="game.js?v=1.1.0"></script>
+  <script src="game.js?v=1.2.0"></script>
 </body>
 </html>

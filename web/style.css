@@ -232,3 +232,116 @@ body{background:radial-gradient(ellipse 80% 65% at 50% -10%,#2a3935,#0d1719 67%,
  body.battle-live .aim-hint{display:none}
  body.battle-live .arena-top-right{right:6px;top:5px;font-size:8px}
 }
+
+/* 1.2: A single responsive battlefield layout on mobile, no desktop-mode toggle.
+   Keeps full 1000x520 battlefield via contain rather than cropping or stretching. */
+body.battle-live{overflow:hidden; overscroll-behavior:none}
+body.battle-live .app{max-width:none}
+body.battle-live .arena-shell{display:flex;align-items:center;justify-content:center}
+body.battle-live .arena-shell canvas{width:100%;height:100%;max-width:100%;max-height:100%;aspect-ratio:auto;object-fit:contain;flex:none}
+body.battle-live .control-panel{scrollbar-width:thin;overscroll-behavior:contain}
+body.battle-live .range-wrap button{touch-action:manipulation;user-select:none}
+body.battle-live .weapon-strip{overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+body.battle-live #angleRange,body.battle-live #powerRange{touch-action:pan-x}
+body.battle-live .player-chip{overflow:hidden}
+body.battle-live .header-actions{min-width:0}
+@media (max-width:1100px){
+  html,body{width:100%;max-width:100%;overflow-x:hidden}
+  body.battle-live .app{width:100%;height:100dvh;height:100svh;margin:0;padding:3px max(5px,env(safe-area-inset-right)) max(3px,env(safe-area-inset-bottom)) max(5px,env(safe-area-inset-left));overflow:hidden;gap:3px 5px}
+  body.battle-live .app-header{grid-area:header;min-height:0;margin:0;gap:4px;overflow:hidden}
+  body.battle-live .brand{gap:4px;min-width:0}
+  body.battle-live .brand-symbol{width:21px;height:21px;font-size:12px;border-radius:5px;border-width:1px;flex:none}
+  body.battle-live .brand-name{font-size:clamp(12px,2.2vw,17px);white-space:nowrap}
+  body.battle-live .brand-sub{display:none}
+  body.battle-live .header-actions{display:flex;flex-wrap:nowrap;gap:3px;margin-left:auto}
+  body.battle-live .header-btn{min-height:28px;height:28px;font-size:10px;padding:4px 7px;white-space:nowrap;letter-spacing:0}
+  body.battle-live .kk-legal-link,body.battle-live #helpButton,body.battle-live #hangarButton{display:none}
+  body.battle-live .hud{grid-area:hud;display:grid;grid-template-columns:.75fr 1.6fr .75fr 1fr;gap:3px;margin:0;min-height:0}
+  body.battle-live .hud-piece{min-width:0;min-height:0;padding:1px 5px;display:flex;align-items:center;justify-content:center;gap:5px;overflow:hidden;border-radius:4px}
+  body.battle-live .hud-label{margin:0;letter-spacing:0;font-size:clamp(7px,1.4vw,10px);white-space:nowrap}
+  body.battle-live .hud strong{font-size:clamp(10px,2vw,13px);min-width:0;text-overflow:ellipsis;white-space:nowrap}
+  body.battle-live .arena-shell{grid-area:arena;min-height:0;min-width:0;overflow:hidden;border-radius:6px;border-width:1px}
+  body.battle-live .arena-top-left,body.battle-live .arena-top-right{font-size:8px;top:3px;padding:2px 4px;letter-spacing:0;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  body.battle-live .arena-top-left{left:4px}
+  body.battle-live .arena-top-right{right:4px}
+  body.battle-live .aim-hint,body.battle-live .rotate-hint{display:none!important}
+  body.battle-live .roster{grid-area:roster;display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-width:0;min-height:0;margin:0;gap:2px;padding:0;scrollbar-width:none}
+  body.battle-live .player-chip{flex:0 0 clamp(83px,16%,136px);min-width:0;max-width:none;padding:1px 4px;min-height:0;scroll-snap-align:start}
+  body.battle-live .chip-top{gap:2px;font-size:9px;line-height:1.1}
+  body.battle-live .chip-name{flex:1;min-width:0;max-width:none}
+  body.battle-live .chip-score{font-size:8px;white-space:nowrap}
+  body.battle-live .health-track{height:2px;margin-top:2px}
+  body.battle-live .control-panel{grid-area:controls;min-height:0;min-width:0;display:flex;flex-direction:column;gap:3px;padding:3px 5px;overflow-x:hidden;overflow-y:auto;border-radius:6px}
+  body.battle-live .control-heading{display:none}
+  body.battle-live .aim-grid{display:grid;grid-template-columns:1fr;gap:1px;flex:none}
+  body.battle-live .field-label{display:flex;align-items:center;gap:4px;margin:0 2px;font-size:9px;line-height:1}
+  body.battle-live .field-label output{font-size:12px}
+  body.battle-live .range-wrap{display:flex;gap:4px;margin:1px 0;min-height:44px;align-items:center}
+  body.battle-live .range-wrap .nudge{width:44px;min-width:44px;flex-basis:44px;height:44px;min-height:44px;font-size:25px;padding:0}
+  body.battle-live .range-wrap input[type=range]{width:20px;min-width:12px;height:44px;min-height:44px}
+  body.battle-live .weapons-head{margin:1px 0 0;min-height:10px;flex:none}
+  body.battle-live .weapons-head .eyebrow{font-size:8px;letter-spacing:0;margin:0}
+  body.battle-live #weaponHint{display:none}
+  body.battle-live .weapon-strip{display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scroll-snap-type:x proximity;min-height:43px;height:43px;max-height:43px;gap:4px;flex:none}
+  body.battle-live .weapon-option{min-height:39px;height:39px;max-height:39px;min-width:92px;width:92px;max-width:92px;flex:0 0 92px;display:flex;align-items:center;gap:3px;padding:3px 4px;text-align:left;scroll-snap-align:start}
+  body.battle-live .weapon-symbol{font-size:17px;margin:0}
+  body.battle-live .weapon-label{font-size:8px;line-height:1.1;overflow:hidden}
+  body.battle-live .weapon-count{font-size:8px}
+  body.battle-live .ability-row{display:flex;flex:none;flex-wrap:nowrap;min-width:0;gap:3px;margin:0;padding:0}
+  body.battle-live .ability-label,body.battle-live .shield-badge{display:none}
+  body.battle-live .ability-row button{flex:1;min-width:0;min-height:42px;height:42px;font-size:11px;padding:3px}
+  body.battle-live .fire-row{margin:0;padding:0;min-height:46px;flex:none}
+  body.battle-live .fire-info{display:none}
+  body.battle-live .fire-button{height:46px;min-height:46px;width:100%;font-size:18px;padding:4px}
+  body.battle-live .app-footer,body.battle-live .kk-legal-dock{display:none}
+  body.battle-live .modal-backdrop{z-index:100}
+}
+/* Handsets held horizontally, including very short 320px-high screens. */
+@media (max-width:1100px) and (orientation:landscape){
+  body.battle-live .app{display:grid;grid-template-columns:minmax(0,1fr) clamp(205px,32vw,290px);grid-template-rows:27px 24px minmax(0,1fr) 25px;grid-template-areas:'header header' 'hud hud' 'arena controls' 'roster controls'}
+  body.battle-live .control-panel{gap:1px}
+  body.battle-live .range-wrap{min-height:40px}
+  body.battle-live .range-wrap .nudge{height:40px;min-height:40px;width:42px;min-width:42px;flex-basis:42px}
+  body.battle-live .range-wrap input[type=range]{height:40px;min-height:40px}
+  body.battle-live .ability-row button{height:39px;min-height:39px}
+  body.battle-live .weapon-strip{height:40px;min-height:40px;max-height:40px}
+  body.battle-live .weapon-option{height:37px;min-height:37px}
+  body.battle-live .fire-button{height:44px;min-height:44px}
+}
+/* Handsets held upright: true responsive vertical arrangement. */
+@media (max-width:1100px) and (orientation:portrait){
+  body.battle-live .app{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:29px 25px minmax(100px,1fr) 26px minmax(0,max-content);grid-template-areas:'header' 'hud' 'arena' 'roster' 'controls'}
+  body.battle-live #orientationButton{display:none}
+  body.battle-live .control-panel{max-height:min(47dvh,300px);padding:3px 5px;gap:2px}
+  body.battle-live .aim-grid{grid-template-columns:1fr 1fr;gap:4px}
+  body.battle-live .range-wrap .nudge{width:43px;min-width:43px;flex-basis:43px}
+  body.battle-live .range-wrap input[type=range]{min-width:0}
+  body.battle-live .weapon-strip{height:42px;min-height:42px}
+  body.battle-live .ability-row button{min-height:40px;height:40px}
+  body.battle-live .fire-button{height:47px;min-height:47px}
+}
+@media (max-width:430px) and (orientation:portrait){
+  body.battle-live .aim-grid{grid-template-columns:1fr}
+  body.battle-live .field-label{height:11px}
+  body.battle-live .range-wrap{min-height:39px}
+  body.battle-live .range-wrap .nudge{height:39px;min-height:39px;width:46px;flex-basis:46px}
+  body.battle-live .range-wrap input[type=range]{height:39px;min-height:39px}
+  body.battle-live .control-panel{max-height:min(46dvh,295px)}
+}
+@media (max-width:1100px) and (max-height:540px) and (orientation:portrait){
+  body.battle-live .app{grid-template-rows:26px 22px minmax(68px,1fr) 22px minmax(0,max-content)}
+  body.battle-live .control-panel{max-height:52dvh}
+}
+@media (max-width:430px) and (orientation:portrait) and (max-height:610px){
+  body.battle-live .app{grid-template-rows:26px 22px minmax(70px,1fr) 22px minmax(0,max-content)}
+  body.battle-live .control-panel{max-height:50dvh;gap:0;padding:2px 4px}
+  body.battle-live .field-label{height:9px;font-size:8px}
+  body.battle-live .range-wrap{min-height:37px;margin:0}
+  body.battle-live .range-wrap .nudge{height:37px;min-height:37px}
+  body.battle-live .range-wrap input[type=range]{height:37px;min-height:37px}
+  body.battle-live .weapons-head{display:none}
+  body.battle-live .weapon-strip{min-height:39px;height:39px;max-height:39px}
+  body.battle-live .weapon-option{min-height:36px;height:36px}
+  body.battle-live .ability-row button{min-height:36px;height:36px}
+  body.battle-live .fire-button{min-height:43px;height:43px}
+}
