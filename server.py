@@ -18,6 +18,7 @@ PUBLIC=ROOT/'web'
 rooms={}
 ABC='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 TTL=2*3600
+RECONNECT_GRACE=5*60
 MAX_MESSAGE=550_000
 DB_PATH=os.environ.get('KRATERKRACH_ID_DB',str(ROOT/'kk_identity.sqlite3'))
 
@@ -70,7 +71,7 @@ def alliances(room):
 def roster(room):
     pairs=alliances(room)
     entries=[{'seat':seat,'name':p['name'],'tank':p['tank'],'bot':False,
-              'connected':not p['ws'].closed,'ally':pairs.get(seat,-1),'request':p.get('request',-1)}
+              'connected':p.get('ws') is not None and not p['ws'].closed,'ally':pairs.get(seat,-1),'request':p.get('request',-1)}
              for seat,p in sorted(room['peers'].items())]
     for k in range(room['bots']):
         entries.append({'seat':len(room['peers'])+k,'name':f'CPU {k+1}',
@@ -93,11 +94,12 @@ async def broadcast_roster(room):
 
 async def ws_handler(req):
     mode=req.query.get('mode','')
-    if mode not in ('host','guest'):return web.Response(status=400,text='Invalid role')
+    if mode not in ('host','guest','resume'):return web.Response(status=400,text='Invalid role')
     token=req.query.get('id','').strip()
     if not re.fullmatch('[0-9a-f]{32}',token):return web.Response(status=400,text='Missing device identity')
     try:name=choose_username(token)
     except Exception:return web.Response(status=503,text='Identity registry unavailable')
+    previous=None
     if mode=='host':
         try:
             limit=max(2,min(6,int(req.query.get('maxPlayers','6'))))
@@ -106,27 +108,41 @@ async def ws_handler(req):
         except ValueError:return web.Response(status=400,text='Invalid settings')
         code=code_new()
         room={'code':code,'peers':{},'limit':limit,'rounds':rounds,
-              'bots':bots,'started':False,'created':time.time()}
+              'bots':bots,'started':False,'created':time.time(),'last_state':None}
         rooms[code]=room
         seat=0
     else:
         code=req.query.get('code','').strip().upper()
         room=rooms.get(code)
         if room is None or time.time()-room['created']>TTL:return web.Response(status=404,text='Room not found or expired')
-        if room['started']:return web.Response(status=403,text='Game started')
-        if len(room['peers'])+room['bots']>=room['limit']:return web.Response(status=403,text='Room full')
-        seat=next((s for s in range(1,room['limit']-room['bots']) if s not in room['peers']),None)
-        if seat is None:return web.Response(status=403,text='Room full')
-    # One identity may not open two seats within the same room.
-    if any(p['token']==token for p in room['peers'].values()):
-        return web.Response(status=409,text='This player has already joined')
-    slot={'seat':seat}
+        if mode=='resume':
+            found=next(((seat,p) for seat,p in room['peers'].items() if p['token']==token),None)
+            if found is None:return web.Response(status=403,text='Reserved seat not found')
+            seat,previous=found
+            if previous.get('disconnected_at') and time.time()-previous['disconnected_at']>RECONNECT_GRACE:
+                return web.Response(status=403,text='Reconnect grace period expired')
+        else:
+            if room['started']:return web.Response(status=403,text='Game started; use resume')
+            if len(room['peers'])+room['bots']>=room['limit']:return web.Response(status=403,text='Room full')
+            seat=next((s for s in range(1,room['limit']-room['bots']) if s not in room['peers']),None)
+            if seat is None:return web.Response(status=403,text='Room full')
+    if mode!='resume' and any(p['token']==token for p in room['peers'].values()):
+        return web.Response(status=409,text='This player has already joined; use resume')
+    slot=previous['slot'] if previous else {'seat':seat}
     ws=web.WebSocketResponse(heartbeat=25,max_msg_size=MAX_MESSAGE)
     await ws.prepare(req)
-    room['peers'][seat]={'ws':ws,'name':name,'tank':'scout','slot':slot,'token':token,'request':-1}
+    if previous:
+        old_ws=previous.get('ws')
+        previous['ws']=ws
+        previous['disconnected_at']=None
+        if old_ws is not None and not old_ws.closed:await old_ws.close()
+    else:
+        room['peers'][seat]={'ws':ws,'name':name,'tank':'scout','slot':slot,'token':token,'request':-1,'disconnected_at':None}
     await send(ws,{'type':'welcome','code':code,'seat':seat,'name':name,
-                   'maxPlayers':room['limit'],'maxRounds':room['rounds'],'bots':room['bots']})
+                   'resumed':mode=='resume','maxPlayers':room['limit'],'maxRounds':room['rounds'],'bots':room['bots']})
     await broadcast_roster(room)
+    if mode=='resume' and room.get('last_state'):
+        await send(ws,{'type':'resume_state' if seat==0 else 'state',**room['last_state']})
     try:
         async for msg in ws:
             if msg.type!=WSMsgType.TEXT or len(msg.data)>MAX_MESSAGE:continue
@@ -135,6 +151,14 @@ async def ws_handler(req):
             if not isinstance(data,dict):continue
             kind=data.get('type')
             seat=slot['seat']
+            if room['peers'].get(seat,{}).get('ws') is not ws:break
+            if kind=='leave':
+                if seat==0:
+                    await send_all(room,{'type':'error','message':'The host has closed the room.'})
+                    rooms.pop(code,None)
+                room['peers'].pop(seat,None)
+                await broadcast_roster(room)
+                break
             if kind=='profile' and not room['started']:
                 # Name cannot be edited; only tank class is user-selectable.
                 tank=str(data.get('tank','scout'))
@@ -146,7 +170,7 @@ async def ws_handler(req):
                 if target!=-1 and (target not in room['peers'] or target==seat):continue
                 room['peers'][seat]['request']=target
                 await broadcast_roster(room)
-            elif kind=='start' and seat==0 and not room['started'] and len(room['peers'])+room['bots']>=2:
+            elif kind=='start' and seat==0 and not room['started'] and len(room['peers'])+room['bots']>=2 and all(p.get('ws') is not None and not p['ws'].closed for p in room['peers'].values()):
                 old_peers=[p for _,p in sorted(room['peers'].items())]
                 old_to_new={p['slot']['seat']:i for i,p in enumerate(old_peers)}
                 for i,p in enumerate(old_peers):
@@ -166,8 +190,8 @@ async def ws_handler(req):
             elif kind=='state' and seat==0 and room['started']:
                 game=data.get('game')
                 if not isinstance(game,dict) or not isinstance(game.get('players'),list) or len(game['players'])!=room.get('started_players',0):continue
-                await asyncio.gather(*(send(p['ws'],{'type':'state','game':game,
-                    'endText':str(data.get('endText',''))[:150]}) for s,p in list(room['peers'].items()) if s!=0))
+                room['last_state']={'game':game,'endText':str(data.get('endText',''))[:150]}
+                await asyncio.gather(*(send(p['ws'],{'type':'state',**room['last_state']}) for s,p in list(room['peers'].items()) if s!=0))
             elif kind=='action' and seat!=0 and room['started']:
                 a=data.get('action',{})
                 if not isinstance(a,dict) or a.get('kind') not in {'aim','move','weapon','fire'}:continue
@@ -177,28 +201,35 @@ async def ws_handler(req):
                 await send(room['peers'][0]['ws'],{'type':'action','seat':seat,'action':a})
     finally:
         seat=slot['seat']
+        # A transient mobile network loss must NOT erase the player's seat or
+        # destroy the room. The original token + code can reclaim the seat.
         if room['peers'].get(seat,{}).get('ws') is ws:
-            room['peers'].pop(seat,None)
-            for p in room['peers'].values():
-                if p['request']==seat:p['request']=-1
-            if seat==0:
-                await send_all(room,{'type':'error','message':'The room host has disconnected.'})
-                for p in list(room['peers'].values()):await p['ws'].close()
-                rooms.pop(code,None)
-            else:await broadcast_roster(room)
+            room['peers'][seat]['ws']=None
+            room['peers'][seat]['disconnected_at']=time.time()
+            if rooms.get(code) is room:await broadcast_roster(room)
     return ws
 
 async def health(req):
-    return web.json_response({'ok':True,'version':'1.0','active_rooms':len(rooms),'max_seats':6})
+    return web.json_response({'ok':True,'version':'1.1','active_rooms':len(rooms),'max_seats':6})
 
 async def cleanup(app):
     while True:
-        await asyncio.sleep(120)
+        await asyncio.sleep(20)
         for c,r in list(rooms.items()):
-            if time.time()-r['created']>=TTL:
-                await send_all(r,{'type':'error','message':'Room expired after two hours.'})
-                for p in list(r['peers'].values()):await p['ws'].close()
+            host=r['peers'].get(0)
+            host_absent=(host is None or (host.get('disconnected_at') is not None
+                and time.time()-host['disconnected_at']>RECONNECT_GRACE))
+            if time.time()-r['created']>=TTL or host_absent:
+                await send_all(r,{'type':'error','message':'Room expired or host did not reconnect within five minutes.'})
+                for p in list(r['peers'].values()):
+                    if p.get('ws') is not None:await p['ws'].close()
                 rooms.pop(c,None)
+            elif not r['started']:
+                # An absent guest can leave an unstarted lobby after grace time.
+                for seat,p in list(r['peers'].items()):
+                    if seat!=0 and p.get('disconnected_at') is not None and time.time()-p['disconnected_at']>RECONNECT_GRACE:
+                        r['peers'].pop(seat,None)
+                await broadcast_roster(r)
 
 async def lifecycle(app):
     task=asyncio.create_task(cleanup(app))
@@ -218,5 +249,5 @@ app.cleanup_ctx.append(lifecycle)
 
 if __name__=='__main__':
     port=int(os.environ.get('PORT','8765'))
-    print(f'KRATERKRACH 1.0 multiplayer: http://0.0.0.0:{port}',flush=True)
+    print(f'KRATERKRACH 1.1 multiplayer: http://0.0.0.0:{port}',flush=True)
     web.run_app(app,host='0.0.0.0',port=port,print=None)
